@@ -60,7 +60,88 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 
 
 
-<!-- ====== 팝업 HTML ====== -->
+<style>
+/* 팝업 레이아웃 */
+.popup {
+  display: none;
+  position: fixed;
+  top:0; left:0;
+  width:100%; height:100%;
+  background: rgba(0,0,0,0.85);
+  align-items: center;
+  justify-content: center;
+  z-index: 1200;
+}
+
+/* 콘텐츠 카드 */
+.popup-content {
+  background: #1e1e1e;
+  color: #f1f1f1;
+  padding: 1rem 1.6rem;
+  border-radius: 0.35rem;
+  width: 92%;
+  max-width: 520px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.7);
+  transform: translateY(18px);
+}
+
+/* 제목 */
+.popup-content h3 { margin:0 0 8px 0; text-align:center; font-size:1rem; }
+
+/* 폼 요소 */
+.popup-content label { display:block; font-size:0.85rem; margin-top:6px; color:#d1d1d1; }
+.popup-content input[type="text"],
+.popup-content input[type="url"],
+.popup-content textarea,
+.popup-content input[type="file"]{
+  width:100%;
+  padding:8px;
+  margin-top:4px;
+  border-radius:4px;
+  border:1px solid #444;
+  background:#2a2a2a;
+  color:#f1f1f1;
+  font-size:0.92rem;
+}
+
+/* 버튼 */
+.popup-content button{
+  width:100%;
+  margin-top:10px;
+  padding:8px;
+  background:#111;
+  color:#fff;
+  border:none;
+  border-radius:6px;
+  font-weight:700;
+  cursor:pointer;
+  transition: background .18s;
+}
+.popup-content button:hover{ background:#4752c4; }
+
+/* Turnstile 중앙정렬 */
+.cf-turnstile{ margin:10px auto 0 auto; display:block; text-align:center; }
+
+/* 알림 메시지 (기본 스타일, JS에서 동적 생성) */
+#popupMessage{ transition: all .25s ease; }
+
+/* 반응형: 모바일 */
+@media (max-width:480px){
+  .popup-content{ padding:0.5rem 0.7rem; max-width:92%; transform:translateY(12px); }
+  .popup-content h3{ font-size:0.88rem; }
+  .popup-content label{ font-size:0.8rem; }
+  .popup-content input[type="text"],
+  .popup-content input[type="url"],
+  .popup-content textarea,
+  .popup-content input[type="file"]{ font-size:0.82rem; padding:6px; }
+  .popup-content button{ padding:6px; font-size:0.82rem; }
+  .cf-turnstile{ transform: scale(0.86); transform-origin: top center; }
+}
+</style>
+</head>
+<body>
+
+<!-- 팝업 HTML -->
 <div id="reportPopup" class="popup" onclick="closePopupOutside(event)">
   <div class="popup-content" role="dialog" aria-modal="true" aria-labelledby="reportTitle">
     <h3 id="reportTitle"><span class="tossface">🛡️</span> 버그 바운티 제보</h3>
@@ -81,13 +162,13 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
       <label for="proof">증빙 파일 (선택)</label>
       <input type="file" id="proof" name="proof" accept="image/*,text/plain,application/pdf">
 
-
-            <!-- Cloudflare Turnstile -->
+      <!-- Cloudflare Turnstile: data-callback 이름과 JS 함수 일치 -->
       <div class="cf-turnstile"
            data-sitekey="0x4AAAAAAB4oLZlBGaXvD2Tc"
            data-theme="dark"
            data-size="normal"
-           data-callback="onSuccess">
+           data-callback="onTurnstileSuccess"
+           data-expired-callback="onTurnstileExpired">
       </div>
 
       <button type="submit" aria-label="제출하기">제출하기</button>
@@ -95,18 +176,31 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   </div>
 </div>
 
+<!-- Turnstile 스크립트 (필수) -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
 <script>
+/*
+  작동 보장 포인트:
+  - Turnstile 성공 콜백(onTurnstileSuccess)에서 토큰 저장
+  - submitReport()는 iframe 접근을 전혀 하지 않고 전역 token을 사용
+  - 알림은 항상 최상위(z-index 큰 값)로 생성
+  - fetch로 Discord webhook (multipart/form-data) 전송
+*/
+
 let turnstileToken = "";
 
-
+/* Turnstile 콜백: 성공 시 토큰 저장 */
 function onTurnstileSuccess(token) {
   turnstileToken = token || "";
 }
 
+/* Turnstile 만료 콜백 */
 function onTurnstileExpired() {
   turnstileToken = "";
 }
 
+/* 알림 메시지 (맨 앞으로) */
 function showPopupMessage(message, isError = false) {
   let msg = document.getElementById("popupMessage");
   if (!msg) {
@@ -114,18 +208,18 @@ function showPopupMessage(message, isError = false) {
     msg.id = "popupMessage";
     Object.assign(msg.style, {
       position: "fixed",
-      bottom: "24px",
+      bottom: "18px",
       left: "50%",
       transform: "translateX(-50%)",
-      padding: "0.4rem 1.2rem",
+      padding: "0.4rem 1rem",
       borderRadius: "0.35rem",
-      fontSize: "0.9rem",
+      fontSize: "0.92rem",
       zIndex: "2147483647",
       color: "#fff",
       boxShadow: "0 6px 18px rgba(0,0,0,0.6)",
       opacity: "0.98",
       display: "none",
-      maxWidth: "92%",
+      maxWidth: "94%",
       textAlign: "center",
       wordBreak: "break-word"
     });
@@ -134,23 +228,23 @@ function showPopupMessage(message, isError = false) {
   msg.style.background = isError ? "#dc3545" : "#333";
   msg.textContent = message;
   msg.style.display = "block";
-
-  setTimeout(() => {
-    msg.style.display = "none";
-  }, 3000);
+  setTimeout(() => { msg.style.display = "none"; }, 3000);
 }
 
+/* 팝업 밖 클릭하면 닫기 */
 function closePopupOutside(event) {
   if (event.target.classList.contains('popup')) {
     event.target.style.display = 'none';
   }
 }
 
+/* 외부에서 팝업 열기 */
 function openPopup() {
-  const p = document.getElementById('reportPopup');
-  if (p) p.style.display = 'flex';
+  const el = document.getElementById('reportPopup');
+  if (el) el.style.display = 'flex';
 }
 
+/* 제출 처리 */
 async function submitReport(event) {
   event.preventDefault();
 
@@ -160,14 +254,15 @@ async function submitReport(event) {
   const vuln = document.getElementById("vuln").value.trim();
   const proofFile = document.getElementById("proof").files[0];
 
+  // Turnstile 토큰 사용 (iframe 접근 절대 금지)
   if (!turnstileToken) {
     showPopupMessage("⚠️ Turnstile을 완료해주세요.", true);
     return false;
   }
 
+  // === 여기에 실제 사용할 웹훅 URL을 넣으세요 ===
   const webhookURL = "https://discord.com/api/webhooks/1408447744971898951/nhjFUcbV9J7CT_raMgZQnHJ05Vk9IicVEvhLBxlIoEUS_geyw8ddW664t7zykNOmDwar";
 
-  // 임베드 메시지 구성
   const embed = {
     embeds: [{
       title: "🛡️ 취약점 제보 도착!",
@@ -184,9 +279,8 @@ async function submitReport(event) {
 
   const formData = new FormData();
   formData.append("payload_json", JSON.stringify(embed));
-  // 첨부파일이 있으면 전송
   if (proofFile) formData.append("file", proofFile);
-  // Turnstile 토큰을 함께 전송 (서버에서 검증할 때 사용하도록)
+  // 토큰도 함께 전송 (서버 검증용으로 보관할 경우)
   formData.append("turnstile-token", turnstileToken);
 
   try {
@@ -194,10 +288,9 @@ async function submitReport(event) {
     if (!res.ok) throw new Error(`전송 실패: ${res.status}`);
     showPopupMessage("✅ 제보가 성공적으로 전송되었습니다.");
     document.getElementById("reportPopup").style.display = "none";
-    // 초기화: 토큰 초기화 & Turnstile 리셋(가능하면)
+    // 초기화
     turnstileToken = "";
-    try { if (window.turnstile) window.turnstile.reset(); } catch(e) { /* ignore */ }
-    // 폼 초기화
+    try { if (window.turnstile && typeof window.turnstile.reset === 'function') window.turnstile.reset(); } catch(e) {}
     document.getElementById("reportForm").reset();
   } catch (err) {
     console.error(err);
@@ -205,112 +298,6 @@ async function submitReport(event) {
   }
 }
 </script>
-
-<!-- Turnstile 스크립트 (필수) -->
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-
-<!-- ====== CSS (팝업 + 반응형) ====== -->
-<style>
-/* 팝업 레이아웃 */
-.popup {
-  display: none;
-  position: fixed;
-  top: 0; left: 0;
-  width: 100%; height: 100%;
-  background: rgba(0,0,0,0.85);
-  align-items: center; justify-content: center;
-  z-index: 1200;
-}
-
-/* 콘텐츠 카드 */
-.popup-content {
-  background: #1e1e1e;
-  color: #f1f1f1;
-  padding: 1rem 1.6rem;
-  border-radius: 0.35rem;
-  width: 92%;
-  max-width: 520px;
-  box-shadow: 0 6px 20px rgba(0,0,0,0.7);
-  transform: translateY(18px);
-}
-
-/* 제목 */
-.popup-content h3 {
-  margin: 0 0 8px 0;
-  text-align: center;
-  font-size: 1rem;
-}
-
-/* 폼 요소 */
-.popup-content label {
-  display: block;
-  font-size: 0.85rem;
-  margin-top: 6px;
-  color: #d1d1d1;
-}
-.popup-content input[type="text"],
-.popup-content input[type="url"],
-.popup-content textarea,
-.popup-content input[type="file"] {
-  width: 100%;
-  padding: 8px;
-  margin-top: 4px;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background: #2a2a2a;
-  color: #f1f1f1;
-  font-size: 0. nine rem; /* fallback styling */
-}
-
-/* 버튼 */
-.popup-content button {
-  width: 100%;
-  margin-top: 10px;
-  padding: 8px;
-  background: #000000;
-  color: #f1f1f1;
-  border: none;
-  border-radius: 6px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.18s ease;
-}
-
-/* Turnstile 중앙정렬 */
-.cf-turnstile { margin: 10px auto 0 auto; display: block; text-align: center; }
-
-/* 반응형: 모바일에서 더 작게 보이게 조정 */
-@media (max-width: 480px) {
-  .popup-content { padding: 0.5rem 0.7rem; max-width: 92%; transform: translateY(12px); }
-  .popup-content h3 { font-size: 0.88rem; }
-  .popup-content label { font-size: 0.8rem; }
-  .popup-content input[type="text"],
-  .popup-content input[type="url"],
-  .popup-content textarea,
-  .popup-content input[type="file"] {
-    font-size: 0.82rem;
-    padding: 6px;
-  }
-  .popup-content button { padding: 6px; font-size: 0.82rem; }
-  /* Turnstile 위젯 축소 */
-  .cf-turnstile { transform: scale(0.86); transform-origin: top center; }
-}
-</style>
-
-
-
-
-
-
-
-
-<style>
-  .cf-turnstile {
-    display: flex;
-    justify-content: center; 
-    margin: 1rem 0;
-  }
-</style>
 
 <div id="popupMessage" class="alert-popup" style="display: none;"></div>
 
